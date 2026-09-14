@@ -2,9 +2,9 @@
 """
 build.py: the NMFlix catalogue feed. See docs/NMFLIX_ROWS_PLAN.md.
 
-    python tools/flix_feed/build.py --out <dir>                # full build
-    python tools/flix_feed/build.py --out <dir> --limit 150    # smoke run, first 150 titles
-    python tools/flix_feed/build.py --out <dir> --cache <dir>  # keep per-title responses between runs
+    python tools/build.py --out <dir>                # full build
+    python tools/build.py --out <dir> --limit 150    # smoke run, first 150 titles
+    python tools/build.py --out <dir> --cache <dir>  # keep per-title responses between runs
 
 Writes three files into --out:
 
@@ -58,7 +58,9 @@ LOGO_WIDE_RATIO = 4.0            # width / height at or above this is a wordmark
 OVERVIEW_CHARS = 300             # the row detail shows three lines; the detail page fetches the rest live
 KEYWORDS_MAX = 8
 RECS_MAX = 12
-CAST_MAX = 3
+CAST_MAX = 10          # billed cast with character names: the search index matches "beast boy" and "kevin hart"
+DIRECTORS_MAX = 2
+POPULAR_PAGES = {"movie": 150, "tv": 100}   # the popular name index: 20 a page, so 3,000 films and 2,000 series
 IMDB_VOTE_FLOOR = 1000
 MOVIE_MIN_RUNTIME = 60           # a short film in a feature row reads as a mistake (Thriller, 1983, 13 minutes)
 
@@ -281,6 +283,33 @@ def imdb_ratings(cache: Path | None) -> dict[str, float]:
 
 
 # ------------------------------------------------------------------ build
+def popular_index(tmdb: "Tmdb") -> list[dict]:
+    """Discover, by popularity, with at least 50 votes: name, year, kind, backdrop, popularity, vote, alternate
+    name and genre ids per title. About 650 KB raw, 150 KB gzipped."""
+    jobs = [(kind, n) for kind, count in POPULAR_PAGES.items() for n in range(1, count + 1)]
+
+    def page(job: tuple[str, int]) -> list[dict]:
+        kind, n = job
+        j = tmdb.get(f"/discover/{kind}", sort_by="popularity.desc", page=n, include_adult="false", language="en-US", **{"vote_count.gte": 50})
+        if not j:
+            return []
+        return [{"id": f"{kind}-{it['id']}", "t": kind, "n": it.get("title") or it.get("name") or "",
+                 "y": (it.get("release_date") or it.get("first_air_date") or "")[:4], "bd": it.get("backdrop_path"),
+                 "pop": round(it.get("popularity", 0), 1), "va": round(it.get("vote_average", 0), 1),
+                 "alt": it.get("original_title") or it.get("original_name") or "", "gi": it.get("genre_ids", [])}
+                for it in j.get("results", []) if it.get("backdrop_path") and (it.get("title") or it.get("name"))]
+
+    out: list[dict] = []
+    seen: set[str] = set()
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        for lst in pool.map(page, jobs):
+            for it in lst:
+                if it["id"] not in seen:
+                    seen.add(it["id"])
+                    out.append(it)
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
@@ -369,7 +398,10 @@ def main() -> int:
             "rt": runtime,
             "seasons": j.get("number_of_seasons"),
             "col": (j.get("belongs_to_collection") or {}).get("id"),
-            "cast": [c["id"] for c in j.get("credits", {}).get("cast", [])[:CAST_MAX]],
+            # Names and character names, not ids: the box's search matches both without a request.
+            "cast": [{"n": c.get("name", ""), "c": c.get("character", "")} for c in j.get("credits", {}).get("cast", [])[:CAST_MAX]],
+            "dir": ([c.get("name", "") for c in j.get("credits", {}).get("crew", []) if c.get("job") == "Director"]
+                    + [c.get("name", "") for c in j.get("created_by", [])])[:DIRECTORS_MAX],
             "imdb": imdb_id,
             "ir": ratings.get(imdb_id) if imdb_id else None,
             "o": (j.get("overview") or "")[:OVERVIEW_CHARS],
@@ -413,15 +445,22 @@ def main() -> int:
     ]
     candidates = [c for c in candidates if len(c["members"]) >= 6]
 
+    # 3b. The popular name index: the most popular titles anywhere, names only, so the search's instant layer
+    # answers "joh" with John Wick before any request, whether or not the rows carry it.
+    popular = popular_index(tmdb)
+    print(f"popular index: {len(popular)} titles")
+
     # 4. Write. Compact JSON; the box reads it with JsonReader.
     generated = datetime.now(timezone.utc).isoformat(timespec="seconds")
     catalog_doc = {"generated_utc": generated, "image_base": IMAGE, "sizes": {"card": SIZE_CARD, "backdrop": SIZE_BACKDROP,
                    "logo": SIZE_LOGO, "poster": SIZE_POSTER}, "titles": catalog}
     rows_doc = {"generated_utc": generated, "rows": candidates}
-    (out / "catalog.json").write_text(json.dumps(catalog_doc, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
-    (out / "rows.json").write_text(json.dumps(rows_doc, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
-    raw = (out / "catalog.json").stat().st_size
-    gz = len(gzip.compress((out / "catalog.json").read_bytes()))
+    popular_doc = {"generated_utc": generated, "titles": popular}
+    (out / "flix_catalog.json").write_text(json.dumps(catalog_doc, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
+    (out / "flix_rows.json").write_text(json.dumps(rows_doc, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
+    (out / "flix_popular.json").write_text(json.dumps(popular_doc, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
+    raw = (out / "flix_catalog.json").stat().st_size
+    gz = len(gzip.compress((out / "flix_catalog.json").read_bytes()))
     report = {
         "generated_utc": generated,
         "universe": len(universe),
