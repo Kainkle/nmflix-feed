@@ -1,0 +1,41 @@
+# nmflix-feed: the NMFlix catalogue, rebuilt nightly. About 1,300 TMDB calls, one per title, then
+# docs/flix_catalog.json and docs/flix_rows.json committed and served from raw.githubusercontent.
+# Nightly on purpose: the 5-minute crons GitHub delays are the sports feed's problem, not this one,
+# and a catalogue a day late is invisible on the box (it keeps the last one it fetched).
+name: catalog
+on:
+  schedule:
+    - cron: "17 8 * * *"   # 08:17 UTC, off the round hour
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: catalog
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: build
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: python tools/build.py --out docs --cache .cache
+      - name: commit if changed
+        run: |
+          if [ -n "$(git status --porcelain docs/)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add docs/
+            git commit -m "catalog: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push
+          else
+            echo "no catalogue changes; nothing to commit"
+          fi
