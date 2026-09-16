@@ -1,7 +1,7 @@
 {
-  "generated_utc": "2026-09-15T13:38:15+00:00",
-  "universe": 1163,
-  "built": 1140,
+  "generated_utc": "2026-09-16T13:33:39+00:00",
+  "universe": 1167,
+  "built": 1144,
   "cohorts": 60,
   "candidate_rows": 59,
   "missing_backdrop": 5,
@@ -9,10 +9,10 @@
   "dropped_blank": 0,
   "missing_logo": 63,
   "imdb_rated": 1062,
-  "tmdb_calls": 1515,
+  "tmdb_calls": 1519,
   "tmdb_errors": 0,
-  "catalog_bytes": 1239184,
-  "catalog_gzip_bytes": 488435,
+  "catalog_bytes": 1244717,
+  "catalog_gzip_bytes": 490769,
   "seconds": 84,
   "thin_rows": []
 }
