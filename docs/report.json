@@ -1,20 +1,18 @@
 {
-  "generated_utc": "2026-11-05T16:31:25+00:00",
+  "generated_utc": "2026-11-06T15:58:36+00:00",
   "universe": 1121,
   "built": 1102,
   "cohorts": 60,
-  "candidate_rows": 60,
+  "candidate_rows": 59,
   "missing_backdrop": 0,
   "dropped_short": 19,
   "dropped_blank": 0,
   "missing_logo": 37,
-  "imdb_rated": 1041,
+  "imdb_rated": 1039,
   "tmdb_calls": 1473,
   "tmdb_errors": 0,
-  "catalog_bytes": 1207775,
-  "catalog_gzip_bytes": 476091,
-  "seconds": 81,
-  "thin_rows": [
-    "new-week"
-  ]
+  "catalog_bytes": 1208073,
+  "catalog_gzip_bytes": 476381,
+  "seconds": 82,
+  "thin_rows": []
 }
